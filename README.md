@@ -168,6 +168,10 @@ macOS needs no extra dependencies. Windows needs GLEW, which arrives through
 
 Run `tools/verify.sh` before believing any of it.
 
+<!-- attributions:start -->
+This project is built on other people's work — see [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
+<!-- attributions:end -->
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE) and [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
