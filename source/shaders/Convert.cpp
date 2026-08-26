@@ -116,7 +116,9 @@ const char* const kLattice = R"(
 //exactly on a centre from putting that pixel in both blocks.
 void BlockRange( int cell, float size, int span, out int first, out int last )
 {
-	//`( cell + 1 ) * size`, NOT `x0 + size`. This cell's end and the next cell's
+	//( cell + 1 ) * size, NOT x0 + size -- no backticks in here, this text is
+	//copied verbatim into a JS template literal by the demo. This cell's end and
+	//the next cell's
 	//start must be the SAME expression or they disagree in the last bit and a
 	//pixel lands in two blocks. Mirrored from Sampling.cpp, which says more.
 	float x0 = float( cell ) * size;

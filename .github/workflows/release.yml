@@ -1,8 +1,8 @@
 name: release
 
-# Build Tilter for the two platforms Resolume runs on:
-#   - macOS   -> universal (arm64 + x86_64) Tilter.bundle
-#   - Windows -> x64 Tilter.dll (GLEW static via vcpkg)
+# Build Macroblock for the two platforms Resolume runs on:
+#   - macOS   -> universal (arm64 + x86_64) Macroblock.bundle
+#   - Windows -> x64 Macroblock.dll (GLEW static via vcpkg)
 #
 # and the OpenFX build of the same thing for Resolve/Nuke/Natron/Vegas, which
 # ships as its OWN zip rather than folded into the FFGL artefact — it installs
@@ -73,7 +73,7 @@ jobs:
         run: |
           mkdir -p out
           if [ "${{ runner.os }}" = "macOS" ]; then
-            cp -R "build/Tilter.bundle" "out/Tilter.bundle"
+            cp -R "build/Macroblock.bundle" "out/Macroblock.bundle"
 
             # Actions runs `shell: bash` as `bash -eo pipefail`, so `cmd | grep -q X`
             # FAILS when grep FINDS its match: grep exits at once, the writer takes
@@ -83,7 +83,7 @@ jobs:
             # CMake latches the architecture list at the first target and
             # silently ignores a late change while still reporting success, so
             # the build log is not evidence. lipo is.
-            __archs=$( lipo -archs "out/Tilter.bundle/Contents/MacOS/Tilter" )
+            __archs=$( lipo -archs "out/Macroblock.bundle/Contents/MacOS/Macroblock" )
             case "$__archs" in
               *arm64*) ;;
               *) echo "expected arm64, got: $__archs"; exit 1 ;;
@@ -96,27 +96,27 @@ jobs:
             # The registration lives in a file-scope constructor nothing names,
             # so a linker that dropped the translation unit would still produce
             # a loadable bundle that reports it contains no plugins.
-            __symbols=$( nm -gU "out/Tilter.bundle/Contents/MacOS/Tilter" )
+            __symbols=$( nm -gU "out/Macroblock.bundle/Contents/MacOS/Macroblock" )
             case "$__symbols" in
               *_plugMain*) ;;
               *) echo "expected _plugMain, got: $__symbols"; exit 1 ;;
             esac
           else
-            cp "build/Release/Tilter.dll" "out/Tilter.dll"
+            cp "build/Release/Macroblock.dll" "out/Macroblock.dll"
           fi
 
           # OpenFX build: its own zip, for the reason in the header comment.
           mkdir -p ofxout
           if [ "${{ runner.os }}" = "macOS" ]; then
-            cp -R "build/Tilter.ofx.bundle" "ofxout/Tilter.ofx.bundle"
+            cp -R "build/Macroblock.ofx.bundle" "ofxout/Macroblock.ofx.bundle"
 
-            __archs=$( lipo -archs "ofxout/Tilter.ofx.bundle/Contents/MacOS/Tilter.ofx" )
+            __archs=$( lipo -archs "ofxout/Macroblock.ofx.bundle/Contents/MacOS/Macroblock.ofx" )
             case "$__archs" in
               *arm64*) ;;
               *) echo "expected arm64, got: $__archs"; exit 1 ;;
             esac
 
-            __symbols=$( nm -gU "ofxout/Tilter.ofx.bundle/Contents/MacOS/Tilter.ofx" )
+            __symbols=$( nm -gU "ofxout/Macroblock.ofx.bundle/Contents/MacOS/Macroblock.ofx" )
             case "$__symbols" in
               *_OfxGetPlugin*) ;;
               *) echo "expected _OfxGetPlugin, got: $__symbols"; exit 1 ;;
@@ -126,10 +126,10 @@ jobs:
             # that is not there -- which is what a plist copied from another
             # plugin repo does, having passed every build and test first.
             # tools/verify.sh runs this locally too, so it cannot reach a tag.
-            codesign --force --sign - --timestamp=none "ofxout/Tilter.ofx.bundle"
+            codesign --force --sign - --timestamp=none "ofxout/Macroblock.ofx.bundle"
           else
-            mkdir -p "ofxout/Tilter.ofx.bundle/Contents/Win64"
-            cp "build/Tilter.ofx.bundle/Contents/Win64/Tilter.ofx" "ofxout/Tilter.ofx.bundle/Contents/Win64/Tilter.ofx"
+            mkdir -p "ofxout/Macroblock.ofx.bundle/Contents/Win64"
+            cp "build/Macroblock.ofx.bundle/Contents/Win64/Macroblock.ofx" "ofxout/Macroblock.ofx.bundle/Contents/Win64/Macroblock.ofx"
           fi
           ls -R ofxout
           ls -R out
@@ -139,15 +139,15 @@ jobs:
         run: |
           cd out
           if command -v 7z >/dev/null 2>&1; then
-            7z a "../tilter-${{ matrix.name }}.zip" ./*
+            7z a "../macroblock-${{ matrix.name }}.zip" ./*
           else
-            zip -r "../tilter-${{ matrix.name }}.zip" ./*
+            zip -r "../macroblock-${{ matrix.name }}.zip" ./*
           fi
           cd ../ofxout
           if command -v 7z >/dev/null 2>&1; then
-            7z a "../tilter-ofx-${{ matrix.name }}.zip" ./*
+            7z a "../macroblock-ofx-${{ matrix.name }}.zip" ./*
           else
-            zip -r "../tilter-ofx-${{ matrix.name }}.zip" ./*
+            zip -r "../macroblock-ofx-${{ matrix.name }}.zip" ./*
           fi
 
       - name: Disk image (macOS)
@@ -161,16 +161,16 @@ jobs:
         # README says is the honest shape here.
         run: |
           source scripts/release-lib.sh
-          rl_init "Tilter" tilter "${{ steps.ver.outputs.version }}" \
-            com.stoatworks.tilter "$GITHUB_WORKSPACE"
+          rl_init "Macroblock" macroblock "${{ steps.ver.outputs.version }}" \
+            com.stoatworks.macroblock "$GITHUB_WORKSPACE"
           cp README.md out/ 2>/dev/null || true
-          rl_adhoc_sign "out/Tilter.bundle"
+          rl_adhoc_sign "out/Macroblock.bundle"
           rl_dmg "${{ matrix.name }}" out
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tilter-${{ matrix.name }}
+          name: macroblock-${{ matrix.name }}
           path: |
             *.zip
             *.dmg
@@ -200,8 +200,8 @@ jobs:
           source scripts/release-lib.sh
           version="${GITHUB_REF_NAME#v}"
           case "$version" in [0-9]*) ;; *) version="0.0.0" ;; esac
-          rl_init "Tilter" tilter "$version" com.stoatworks.tilter "$PWD/installers"
-          zip="$(find artifacts -name "tilter-windows-x86_64.zip" | head -1)"
+          rl_init "Macroblock" macroblock "$version" com.stoatworks.macroblock "$PWD/installers"
+          zip="$(find artifacts -name "macroblock-windows-x86_64.zip" | head -1)"
           if [ -z "$zip" ]; then echo "no Windows artefact, nothing to do"; exit 0; fi
           stage="$RUNNER_TEMP/stage-win"
           rm -rf "$stage"; mkdir -p "$stage"
@@ -213,7 +213,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: tilter-windows-installer
+          name: macroblock-windows-installer
           path: installers/*
           if-no-files-found: warn
 
@@ -244,7 +244,7 @@ jobs:
       # FFGL. The OpenFX SDK subset is vendored in-tree.
       - uses: actions/checkout@v7
 
-      # TILTER_BUILD_FFGL=OFF is what makes the job possible at all. With it
+      # MACROBLOCK_BUILD_FFGL=OFF is what makes the job possible at all. With it
       # ON, the SDK's own find_package(GLEW REQUIRED) fails at CONFIGURE time,
       # so the build dies before compiling a line of a plugin that needs no GL
       # loader.
@@ -268,7 +268,7 @@ jobs:
 
       - name: Collect artifact
         run: |
-          so="build/Tilter.ofx.bundle/Contents/Linux-x86-64/Tilter.ofx"
+          so="build/Macroblock.ofx.bundle/Contents/Linux-x86-64/Macroblock.ofx"
           test -f "$so"
 
           # `nm ... | grep -q` SIGPIPEs under `bash -eo pipefail` when grep
@@ -291,18 +291,18 @@ jobs:
           fi
           readelf -d "$so" | grep NEEDED
 
-          mkdir -p "ofxout/Tilter.ofx.bundle/Contents/Linux-x86-64"
-          cp "$so" "ofxout/Tilter.ofx.bundle/Contents/Linux-x86-64/Tilter.ofx"
+          mkdir -p "ofxout/Macroblock.ofx.bundle/Contents/Linux-x86-64"
+          cp "$so" "ofxout/Macroblock.ofx.bundle/Contents/Linux-x86-64/Macroblock.ofx"
           ls -R ofxout
 
       - name: Archive (zip)
         run: |
           cd ofxout
-          zip -r "../tilter-ofx-linux-x86_64.zip" ./*
+          zip -r "../macroblock-ofx-linux-x86_64.zip" ./*
 
       - uses: actions/upload-artifact@v7
         with:
-          name: tilter-linux-x86_64
+          name: macroblock-linux-x86_64
           path: "*.zip"
           if-no-files-found: error
 
@@ -328,7 +328,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: tilter-linux-x86_64
+          name: macroblock-linux-x86_64
           path: art
 
       - name: Load the plugin and ask it what it is
