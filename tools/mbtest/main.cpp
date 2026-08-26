@@ -1539,8 +1539,8 @@ int checkPresets()
 //---------------------------------------------------------------------------
 int contactSheet( const std::string& path )
 {
-	const int cellW = 240;
-	const int cellH = 135;
+	const int cellW = 320;
+	const int cellH = 180;
 	const int cols  = 4;
 	const int rows  = ( presets::kCount + 1 + cols - 1 ) / cols;
 

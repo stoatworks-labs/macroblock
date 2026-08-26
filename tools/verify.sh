@@ -40,6 +40,119 @@ head_() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 # failed *because* the symbol was found. Capture first, match afterwards.
 symbols_of() { nm -gU "$1" 2>/dev/null; }
 
+#---------------------------------------------------------------------------
+# Every shader, through a real GLSL compiler, before a host has to find out.
+#
+# A shader that will not compile presents to an operator as "the effect does
+# nothing", with the real message buried in the diagnostics log -- so without
+# this it is caught at run time, in a host, or not at all.
+#
+# --target-env=opengl4.5 with -fauto-map-locations: glslc targets SPIR-V, which
+# demands an explicit layout( location ) on every uniform and varying. Those are
+# Vulkan rules and not GLSL ones, and without the flag every shader "fails" for
+# reasons that have nothing to do with the code.
+#
+# glslc is optional -- `brew install shaderc` -- so a machine without it skips
+# rather than fails.
+#---------------------------------------------------------------------------
+shaders_compile() {
+    local dir bad=0 n=0 shader
+
+    if ! command -v glslc >/dev/null 2>&1; then
+        printf '   skipped: glslc not installed (brew install shaderc)\n'
+        return 0
+    fi
+
+    dir="$( mktemp -d )"
+
+    python3 - "$dir" <<'SHADERS_PY'
+import re, sys, pathlib
+out = pathlib.Path( sys.argv[ 1 ] )
+
+# Where this repo keeps its GLSL.
+FILES = [
+	"source/shaders/Composite.cpp",
+	"source/shaders/Convert.cpp",
+	"source/shaders/Reduce.cpp",
+]
+
+# Shaders the plugin assembles at run time.
+# Mirrors composite() in Composite.cpp and reduceX()/reduceY() in Reduce.cpp.
+ASSEMBLED = {
+	"composite": [ "#version 410 core\n", "kConvert", "kCompositeBody" ],
+	"reduceX":   [ "#version 410 core\n", "kConvert", "kLattice", "kReduceXBody" ],
+	"reduceY":   [ "#version 410 core\n", "kLattice", "kReduceYBody" ],
+}
+
+named, unnamed = {}, []
+for f in FILES:
+	text = pathlib.Path( f ).read_text()
+	for m in re.finditer( r'(?:(\w+)\s*(?:\[\s*\])?\s*=\s*)?R"\((.*?)\)"', text, re.S ):
+		if m.group( 1 ): named[ m.group( 1 ) ] = m.group( 2 )
+		else:            unnamed.append( m.group( 2 ) )
+	for m in re.finditer( r'(\w+)\s*=\s*((?:"(?:[^"\\\n]|\\.)*"\s*)+);', text ):
+		named.setdefault( m.group( 1 ), "".join(
+			s.encode().decode( "unicode_escape" )
+			for s in re.findall( r'"((?:[^"\\\n]|\\.)*)"', m.group( 2 ) ) ) )
+
+def emit( name, body ):
+	# The vertex shader is the one that writes gl_Position; everything else is a
+	# fragment shader. glslc takes the stage from the extension.
+	ext = ".vert" if re.search( r"\bgl_Position\s*=", body ) else ".frag"
+	( out / ( name + ext ) ).write_text( body )
+
+def piece( p ):
+	# An int indexes the raw strings that are not assigned to a name, in source
+	# order. A literal starts with #version. Anything else names a constant
+	# above -- and a name that has moved is a KeyError here, not a silent skip.
+	if isinstance( p, int ):       return unnamed[ p ]
+	if p.startswith( "#version" ): return p
+	return named[ p ]
+
+for name, body in named.items():
+	if body.lstrip().startswith( "#version" ) and "void main" in body:
+		emit( name, body )
+
+for name, parts in ASSEMBLED.items():
+	emit( name, "".join( piece( p ) for p in parts ) )
+SHADERS_PY
+
+    for shader in "$dir"/*.vert "$dir"/*.frag; do
+        [ -e "$shader" ] || continue
+        n=$(( n + 1 ))
+        if ! glslc --target-env=opengl4.5 -fauto-map-locations \
+               "$shader" -o /dev/null 2>"$dir/err"; then
+            printf '   %s does not compile\n' "$( basename "$shader" )"
+            sed "s|$dir/||; s|^|      |" "$dir/err"
+            bad=$(( bad + 1 ))
+        fi
+    done
+
+    if [ "$n" -eq 0 ]; then
+        # No shaders at all is a FAILURE, not a pass. It means the extraction
+        # above has lost track of where this repo keeps its GLSL, and a check
+        # that silently looks at nothing is worse than no check.
+        printf '   no shaders were extracted -- the extraction has gone stale\n'
+        rm -rf "$dir"
+        return 1
+    fi
+
+    if [ "$bad" -eq 0 ]; then
+        printf '   %d shaders, all compile\n' "$n"
+    fi
+    rm -rf "$dir"
+    return "$bad"
+}
+
+#---------------------------------------------------------------------------
+head_ "Shaders"
+#---------------------------------------------------------------------------
+if shaders_compile; then
+    ok "every shader compiles"
+else
+    bad "a shader does not compile"
+fi
+
 # ---------------------------------------------------------------------------
 head_ "Build (universal, both plugins)"
 # ---------------------------------------------------------------------------
