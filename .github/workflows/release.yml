@@ -37,7 +37,7 @@ jobs:
       # --- macOS: no extra deps, universal build straight from CMake ---
       - name: Configure (macOS)
         if: runner.os == 'macOS'
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DTILTER_BUILD_TOOLS=OFF
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DMACROBLOCK_BUILD_TOOLS=OFF
 
       # --- Windows: GLEW comes from vcpkg, static-linked (static-md keeps the
       #     CRT dynamic so the plugin matches the host) so the .dll has no
@@ -51,7 +51,7 @@ jobs:
         run: >
           cmake -B build -A x64
           -DCMAKE_BUILD_TYPE=Release
-          -DTILTER_BUILD_TOOLS=OFF
+          -DMACROBLOCK_BUILD_TOOLS=OFF
           -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
           -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
 
@@ -257,8 +257,8 @@ jobs:
           source /opt/rh/gcc-toolset-13/enable
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
-            -DTILTER_BUILD_FFGL=OFF \
-            -DTILTER_BUILD_TOOLS=OFF \
+            -DMACROBLOCK_BUILD_FFGL=OFF \
+            -DMACROBLOCK_BUILD_TOOLS=OFF \
             -DCMAKE_CXX_FLAGS="-static-libstdc++ -static-libgcc"
 
       - name: Build

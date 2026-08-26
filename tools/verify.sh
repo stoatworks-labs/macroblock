@@ -154,6 +154,47 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+head_ "The release workflow's build options"
+# ---------------------------------------------------------------------------
+# Every `-DNAME=` the workflow passes must be a CMake built-in or an option this
+# project actually declares.
+#
+# This exists because of a real failed release. The workflow was copied from a
+# sibling and renamed with `perl -pe 's/\bTILTER_/MACROBLOCK_/g'` -- and `\b`
+# matches nothing between the `D` and the `T` of `-DTILTER_BUILD_FFGL`, so four
+# lines kept the old project's option names. CMake does not error on an unknown
+# `-D`; it defines an unused cache variable and carries on. The macOS and
+# Windows jobs therefore went green while quietly ignoring
+# `-DTILTER_BUILD_TOOLS=OFF`, and the Linux job -- whose whole existence depends
+# on `BUILD_FFGL=OFF` being honoured -- died trying to build a plugin against a
+# submodule it deliberately does not check out.
+#
+# The tag had to be force-moved. A grep for the old name would have caught it,
+# and did not, because both greps run at the time were case-sensitive against
+# `tilter`/`Tilter` while the survivor was `TILTER_`.
+if [ -f .github/workflows/release.yml ]; then
+    declared=$( grep -oE '^[[:space:]]*(option|set)\([[:space:]]*[A-Za-z_][A-Za-z0-9_]*' CMakeLists.txt \
+                | grep -oE '[A-Za-z_][A-Za-z0-9_]*$' | sort -u )
+    passed=$( grep -oE '\-D[A-Za-z_][A-Za-z0-9_]*=' .github/workflows/release.yml \
+              | sed 's/^-D//; s/=$//' | sort -u )
+    unknown=""
+    for name in $passed; do
+        case "$name" in
+            CMAKE_*|VCPKG_*|BUILD_OFX) continue ;;
+        esac
+        if ! echo "$declared" | grep -qx "$name"; then
+            unknown="$unknown $name"
+        fi
+    done
+
+    if [ -z "$unknown" ]; then
+        ok "every -D the workflow passes is an option this project declares"
+    else
+        bad "the workflow passes options this project does not declare:$unknown"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 head_ "Build (universal, both plugins)"
 # ---------------------------------------------------------------------------
 # A fresh configure, because the thing most likely to be stale is the cache that
