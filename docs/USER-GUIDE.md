@@ -18,9 +18,13 @@ onto a coarse lattice and started bleeding across the band boundaries.*
 > compared pixel for pixel across eleven configurations; and at zero the effect is **bit-identical**
 > to its input, not merely close. All 24 controls are measured to change the picture.
 >
-> **It has not yet been run inside Resolume, or in any OpenFX host.** The audio side has only ever
-> seen a spectrum a test harness made up. The Windows build is made in CI and has never been run.
-> None of it has been used on a live show.
+> The audio side has been driven by real music through the same call Resolume makes, so the
+> analyser and the onset detector have been exercised on more than a test tone.
+>
+> **It has not yet been run inside Resolume, or in any OpenFX host.** Nothing here knows what
+> Resolume's spectrum bins mean in hertz, so which frequencies Low, Mid and High actually pick up
+> in Arena is an assumption. The Windows build is made in CI and has never been run. None of it has
+> been used on a live show.
 >
 > This codebase was created with AI assistance, directed and reviewed by a human author.
 

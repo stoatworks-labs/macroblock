@@ -145,9 +145,17 @@ Everything below is measured by `tools/verify.sh` on one machine, not asserted:
 | `--presets` | every preset is alive and distinct, and the four format presets land on the right block size at 720p, 1080p, 1440p and 4K |
 | `sweep.py` | all 24 controls change the picture |
 
+The audio side has additionally been driven by **real music**: `tools/spectrum.py`
+analyses an audio file and `mbtest --pipe --spectrum` feeds the result to the
+plugin through the same call Resolume makes, so the analyser and the onset
+detector have been exercised on real audio rather than on a synthetic click
+train.
+
 **Not yet verified:** it has never been run inside Resolume, or in any OpenFX
-host. The audio side has only ever seen a spectrum the harness made up. The
-Windows build compiles and has never been run. `AGENTS.md` has the full list.
+host. Nothing here knows what Resolume's 64 spectrum bins mean in hertz — the
+bands are defined on bin *indices*, and the mapping is an assumption only a
+session in Arena can settle. The Windows build compiles and has never been run.
+`AGENTS.md` has the full list.
 
 ## Building
 

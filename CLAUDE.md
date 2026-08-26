@@ -13,6 +13,8 @@ Read `AGENTS.md` before changing the lattice, the reduction, or the audio rules.
 - Install to Resolume: `cmake --install build`
 - Render a frame offline: `./build/mbtest --out /tmp/frame.png`
 - List parameters: `./build/mbtest --list`
+- Render footage: `ffmpeg ... -f rawvideo - | ./build/mbtest --pipe --size WxH --script cue.txt --spectrum s.txt | ffmpeg ...`
+- A spectrum from a track: `python3 tools/spectrum.py track.wav --fps 60 -o s.txt`
 
 ## OpenFX build
 Built by default; copy `build/Macroblock.ofx.bundle` to `/Library/OFX/Plugins`.

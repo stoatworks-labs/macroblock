@@ -274,6 +274,16 @@ deterministic.
 | `tools/sweep.py` | every parameter changes the output | that it changes it *correctly* |
 | `demo/tools/check_shaders.py` | the demo runs the plugin's own GLSL | that the demo's *ported* arithmetic still agrees |
 
+`mbtest --pipe` is not a test — it is how footage is rendered. Frames in as raw
+RGBA on stdin, out on stdout, with `--script` for a cue sheet of parameter moves
+and `--spectrum` for a per-frame spectrum from `tools/spectrum.py`.
+
+`--spectrum` is worth knowing about even if no video is ever cut. It pushes a
+real analysis of real music in through `SetParamElementValue`, which is the
+identical call the host makes, so it is the only way short of Arena to watch the
+audio path do its job. Keying the block size in the cue sheet to land on the
+beats would look the same in the finished video and would demonstrate nothing.
+
 `sweep.py` is the only thing that catches a mistyped uniform name, since
 `glGetUniformLocation` returns -1 and `glUniform(-1)` is a documented no-op — so
 a control can be stone dead while everything compiles, links, loads and renders.
@@ -292,10 +302,22 @@ a control can be stone dead while everything compiles, links, loads and renders.
 **Assumed, and not yet checked:**
 
 - **Never rendered through Resolume.** The parameter groups, the dropdowns, the
-  FFT buffer parameter and Arena's real texture sizes are all unconfirmed. The
-  audio side in particular has only ever seen a synthetic spectrum from the
-  harness — whether Resolume's 64 bins behave like it assumes is the single
-  biggest open question in the repo.
+  FFT buffer parameter and Arena's real texture sizes are all unconfirmed.
+- **The audio side has been driven by real music, but not by Resolume's
+  spectrum.** `tools/spectrum.py` analyses an audio file and `mbtest --pipe
+  --spectrum` pushes the result in through `SetParamElementValue` — the same
+  call the host makes — so the analyser, the onset detector and the envelopes
+  have all been exercised on real audio, and the lattice demonstrably collapses
+  on a kick and recovers between them.
+
+  What that does **not** settle is the mapping. `Audio.cpp` splits the bands by
+  bin *index*, and nothing here knows what Resolume's 64 bins mean in hertz;
+  `spectrum.py` had to assume one (linear to about 2.7 kHz, which is what a
+  1024-point FFT at 44.1 kHz gives) and says so at length. If Arena's mapping
+  differs, Low/Mid/High will pick different content there than they do here and
+  the fix is the ranges in `Audio.cpp`. **That is now the single biggest open
+  question in the repo**, and it is a much smaller one than "does any of this
+  work".
 - **Never opened in an OpenFX host.** Resolve, Nuke and Natron have all not seen
   it. The renderer is verified against the GPU pixel for pixel, so what is
   unknown is the glue: the parameter definitions, the preset handling, and
