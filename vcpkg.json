@@ -1,0 +1,11 @@
+{
+  "name": "macroblock",
+  "version-string": "0.1.0",
+  "description": "Dependencies for building the Macroblock FFGL plugin. GLEW is only needed on Windows and Linux; macOS uses the system OpenGL framework. Nothing in CMakeLists.txt mentions this file, so deleting it breaks the Windows job at configure time while every macOS build stays green.",
+  "dependencies": [
+    {
+      "name": "glew",
+      "platform": "!osx"
+    }
+  ]
+}

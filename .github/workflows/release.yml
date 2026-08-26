@@ -1,0 +1,397 @@
+name: release
+
+# Build Tilter for the two platforms Resolume runs on:
+#   - macOS   -> universal (arm64 + x86_64) Tilter.bundle
+#   - Windows -> x64 Tilter.dll (GLEW static via vcpkg)
+#
+# and the OpenFX build of the same thing for Resolve/Nuke/Natron/Vegas, which
+# ships as its OWN zip rather than folded into the FFGL artefact — it installs
+# to /Library/OFX/Plugins, not to Resolume's folder, and mixing them means half
+# the files in a download go somewhere the operator was not told about.
+#
+# Trigger manually (Actions > release > Run workflow) or by pushing a v* tag.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macos-universal, os: macos-14 }
+          - { name: windows-x86_64,  os: windows-latest }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # --- macOS: no extra deps, universal build straight from CMake ---
+      - name: Configure (macOS)
+        if: runner.os == 'macOS'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DTILTER_BUILD_TOOLS=OFF
+
+      # --- Windows: GLEW comes from vcpkg, static-linked (static-md keeps the
+      #     CRT dynamic so the plugin matches the host) so the .dll has no
+      #     external glew32.dll runtime dependency.
+      #
+      #     GLEW arrives through vcpkg.json, which nothing in CMakeLists.txt
+      #     mentions. Deleting that manifest breaks this step at CONFIGURE time
+      #     while every macOS job stays green. ---
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          cmake -B build -A x64
+          -DCMAKE_BUILD_TYPE=Release
+          -DTILTER_BUILD_TOOLS=OFF
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Derive version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0-dev.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          mkdir -p out
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            cp -R "build/Tilter.bundle" "out/Tilter.bundle"
+
+            # Actions runs `shell: bash` as `bash -eo pipefail`, so `cmd | grep -q X`
+            # FAILS when grep FINDS its match: grep exits at once, the writer takes
+            # SIGPIPE, and pipefail reports the pipeline as failed -- failing the
+            # release on a correct binary. Captured and matched with `case` instead.
+
+            # CMake latches the architecture list at the first target and
+            # silently ignores a late change while still reporting success, so
+            # the build log is not evidence. lipo is.
+            __archs=$( lipo -archs "out/Tilter.bundle/Contents/MacOS/Tilter" )
+            case "$__archs" in
+              *arm64*) ;;
+              *) echo "expected arm64, got: $__archs"; exit 1 ;;
+            esac
+            case "$__archs" in
+              *x86_64*) ;;
+              *) echo "expected x86_64, got: $__archs"; exit 1 ;;
+            esac
+
+            # The registration lives in a file-scope constructor nothing names,
+            # so a linker that dropped the translation unit would still produce
+            # a loadable bundle that reports it contains no plugins.
+            __symbols=$( nm -gU "out/Tilter.bundle/Contents/MacOS/Tilter" )
+            case "$__symbols" in
+              *_plugMain*) ;;
+              *) echo "expected _plugMain, got: $__symbols"; exit 1 ;;
+            esac
+          else
+            cp "build/Release/Tilter.dll" "out/Tilter.dll"
+          fi
+
+          # OpenFX build: its own zip, for the reason in the header comment.
+          mkdir -p ofxout
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            cp -R "build/Tilter.ofx.bundle" "ofxout/Tilter.ofx.bundle"
+
+            __archs=$( lipo -archs "ofxout/Tilter.ofx.bundle/Contents/MacOS/Tilter.ofx" )
+            case "$__archs" in
+              *arm64*) ;;
+              *) echo "expected arm64, got: $__archs"; exit 1 ;;
+            esac
+
+            __symbols=$( nm -gU "ofxout/Tilter.ofx.bundle/Contents/MacOS/Tilter.ofx" )
+            case "$__symbols" in
+              *_OfxGetPlugin*) ;;
+              *) echo "expected _OfxGetPlugin, got: $__symbols"; exit 1 ;;
+            esac
+
+            # Reads Info.plist and refuses if CFBundleExecutable names a file
+            # that is not there -- which is what a plist copied from another
+            # plugin repo does, having passed every build and test first.
+            # tools/verify.sh runs this locally too, so it cannot reach a tag.
+            codesign --force --sign - --timestamp=none "ofxout/Tilter.ofx.bundle"
+          else
+            mkdir -p "ofxout/Tilter.ofx.bundle/Contents/Win64"
+            cp "build/Tilter.ofx.bundle/Contents/Win64/Tilter.ofx" "ofxout/Tilter.ofx.bundle/Contents/Win64/Tilter.ofx"
+          fi
+          ls -R ofxout
+          ls -R out
+
+      - name: Archive (zip)
+        shell: bash
+        run: |
+          cd out
+          if command -v 7z >/dev/null 2>&1; then
+            7z a "../tilter-${{ matrix.name }}.zip" ./*
+          else
+            zip -r "../tilter-${{ matrix.name }}.zip" ./*
+          fi
+          cd ../ofxout
+          if command -v 7z >/dev/null 2>&1; then
+            7z a "../tilter-ofx-${{ matrix.name }}.zip" ./*
+          else
+            zip -r "../tilter-ofx-${{ matrix.name }}.zip" ./*
+          fi
+
+      - name: Disk image (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        # A .dmg, but deliberately NOT a .pkg. An FFGL plugin's destination is
+        # per-user and edition-specific -- the README installs to
+        # ~/Documents/Resolume {Arena,Avenue}/Extra Effects -- so a .pkg would
+        # have to guess a path and would silently install to the wrong one for
+        # half of users. Mounting an image and dragging the bundle where the
+        # README says is the honest shape here.
+        run: |
+          source scripts/release-lib.sh
+          rl_init "Tilter" tilter "${{ steps.ver.outputs.version }}" \
+            com.stoatworks.tilter "$GITHUB_WORKSPACE"
+          cp README.md out/ 2>/dev/null || true
+          rl_adhoc_sign "out/Tilter.bundle"
+          rl_dmg "${{ matrix.name }}" out
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tilter-${{ matrix.name }}
+          path: |
+            *.zip
+            *.dmg
+          if-no-files-found: error
+
+  windows-installer:
+    name: Windows installer
+    needs: build
+    runs-on: ubuntu-latest
+    # makensis cross-compiles, so the installer is wrapped here from the zip the
+    # Windows job uploaded. Its directory page defaults to the common FFGL folder
+    # but stays editable, because Resolume reads plugins from a path the user
+    # chooses per edition.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Install NSIS
+        run: sudo apt-get update && sudo apt-get install -y nsis
+
+      - name: Build installer
+        shell: bash
+        run: |
+          source scripts/release-lib.sh
+          version="${GITHUB_REF_NAME#v}"
+          case "$version" in [0-9]*) ;; *) version="0.0.0" ;; esac
+          rl_init "Tilter" tilter "$version" com.stoatworks.tilter "$PWD/installers"
+          zip="$(find artifacts -name "tilter-windows-x86_64.zip" | head -1)"
+          if [ -z "$zip" ]; then echo "no Windows artefact, nothing to do"; exit 0; fi
+          stage="$RUNNER_TEMP/stage-win"
+          rm -rf "$stage"; mkdir -p "$stage"
+          unzip -q "$zip" -d "$stage"
+          cp README.md "$stage/" 2>/dev/null || true
+          # --cli: a plugin has no executable to make a shortcut to.
+          rl_nsis windows-x86_64 "$stage" --cli
+          ls -l installers
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tilter-windows-installer
+          path: installers/*
+          if-no-files-found: warn
+
+  linux-ofx:
+    name: linux-x86_64 (OpenFX)
+    runs-on: ubuntu-latest
+    # AlmaLinux 8 rather than the ubuntu image, for glibc 2.28 against 2.39.
+    # Resolve's supported Linux is Rocky 8.6, and a plugin linked against a
+    # newer glibc is refused by the loader on the distro Blackmagic actually
+    # ships for -- while anything newer than Rocky 8 loads a 2.28 build
+    # perfectly well. This is the widest target, not a concession.
+    #
+    # There is no FFGL half to this job. Resolume has no Linux build, the FFGL
+    # SDK has no Linux path, and the OpenFX plugin is a CPU render that never
+    # makes a GL call.
+    container: almalinux:8
+    steps:
+      # Ahead of checkout on purpose: actions/checkout shells out to git and
+      # the base image has none. gcc-toolset-13 because the stock gcc 8.5
+      # predates parts of the C++17 library this code uses.
+      - name: Toolchain
+        run: |
+          dnf -y install git cmake zip binutils gcc-toolset-13
+          source /opt/rh/gcc-toolset-13/enable
+          gcc --version
+
+      # No submodules: the FFGL SDK is the only one and this job does not build
+      # FFGL. The OpenFX SDK subset is vendored in-tree.
+      - uses: actions/checkout@v7
+
+      # TILTER_BUILD_FFGL=OFF is what makes the job possible at all. With it
+      # ON, the SDK's own find_package(GLEW REQUIRED) fails at CONFIGURE time,
+      # so the build dies before compiling a line of a plugin that needs no GL
+      # loader.
+      #
+      # Static libstdc++/libgcc because gcc-toolset-13's runtime is not
+      # installed on a stock Rocky or Alma 8 -- a dynamically linked build
+      # would fail to load on precisely the machines this targets.
+      - name: Configure
+        run: |
+          source /opt/rh/gcc-toolset-13/enable
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTILTER_BUILD_FFGL=OFF \
+            -DTILTER_BUILD_TOOLS=OFF \
+            -DCMAKE_CXX_FLAGS="-static-libstdc++ -static-libgcc"
+
+      - name: Build
+        run: |
+          source /opt/rh/gcc-toolset-13/enable
+          cmake --build build --parallel
+
+      - name: Collect artifact
+        run: |
+          so="build/Tilter.ofx.bundle/Contents/Linux-x86-64/Tilter.ofx"
+          test -f "$so"
+
+          # `nm ... | grep -q` SIGPIPEs under `bash -eo pipefail` when grep
+          # FINDS its match, failing the release on a correct binary. Captured
+          # and matched with `case` instead, as the macOS job does.
+          __syms=$( nm -D --defined-only "$so" )
+          case "$__syms" in
+            *OfxGetPlugin*) ;;
+            *) echo "expected OfxGetPlugin, got: $__syms"; exit 1 ;;
+          esac
+
+          # The whole reason for the container, asserted rather than assumed:
+          # the highest glibc symbol version the binary asks for must not be
+          # newer than Rocky 8's 2.28. Building in the right image is easy to
+          # get right and impossible to notice getting wrong.
+          __glibc=$( objdump -T "$so" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1 )
+          echo "highest glibc requirement: $__glibc"
+          if [ "$( printf '%s\nGLIBC_2.28\n' "$__glibc" | sort -uV | tail -1 )" != "GLIBC_2.28" ]; then
+            echo "$__glibc is newer than Rocky 8 provides"; exit 1
+          fi
+          readelf -d "$so" | grep NEEDED
+
+          mkdir -p "ofxout/Tilter.ofx.bundle/Contents/Linux-x86-64"
+          cp "$so" "ofxout/Tilter.ofx.bundle/Contents/Linux-x86-64/Tilter.ofx"
+          ls -R ofxout
+
+      - name: Archive (zip)
+        run: |
+          cd ofxout
+          zip -r "../tilter-ofx-linux-x86_64.zip" ./*
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tilter-linux-x86_64
+          path: "*.zip"
+          if-no-files-found: error
+
+  linux-load:
+    name: linux-x86_64 (load test)
+    needs: linux-ofx
+    runs-on: ubuntu-latest
+    # Rocky 8 and not the AlmaLinux 8 that built it: the claim being tested is
+    # "this loads on the distro Resolve supports", and testing it in the image
+    # that produced the binary would only prove the image agrees with itself.
+    #
+    # This is a LOAD test, not a render test. It dlopens the shipped .ofx and
+    # calls the two entry points an OFX host calls first, which runs the OFX
+    # Support library's static initialisers and the factory construction in
+    # getPluginIDs -- the parts that actually fail when an ABI or a glibc floor
+    # is wrong. What it does not do is render a frame or drive a real host;
+    # Resolve is x86_64-only and needs a GPU, so nothing here stands in for
+    # having run the plugin in Resolve.
+    container: rockylinux:8
+    steps:
+      - name: Toolchain
+        run: dnf -y install gcc unzip findutils bash
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: tilter-linux-x86_64
+          path: art
+
+      - name: Load the plugin and ask it what it is
+        shell: bash
+        run: |
+          unzip -q art/*.zip -d unz
+          so="$( find unz -name '*.ofx' | head -1 )"
+          test -n "$so"
+          echo "testing $so"
+          ldd "$so" || true
+
+          cat > probe.c <<'EOF'
+          #include <dlfcn.h>
+          #include <stdio.h>
+
+          /* The head of OfxPlugin from ofxCore.h, which is all this needs. */
+          typedef struct {
+              const char  *pluginApi;
+              int          apiVersion;
+              const char  *pluginIdentifier;
+              unsigned int pluginVersionMajor;
+              unsigned int pluginVersionMinor;
+              void        *setHost;
+              void        *mainEntry;
+          } OfxPluginHead;
+
+          int main( int argc, char **argv )
+          {
+              if( argc < 2 ) { fprintf( stderr, "usage: probe <plugin.ofx>\n" ); return 2; }
+
+              void *h = dlopen( argv[ 1 ], RTLD_NOW | RTLD_LOCAL );
+              if( !h ) { fprintf( stderr, "dlopen: %s\n", dlerror() ); return 1; }
+
+              int            ( *count )( void ) = dlsym( h, "OfxGetNumberOfPlugins" );
+              OfxPluginHead *( *get )( int )    = dlsym( h, "OfxGetPlugin" );
+              if( !count || !get ) { fprintf( stderr, "entry points missing\n" ); return 1; }
+
+              int n = count();
+              printf( "OfxGetNumberOfPlugins -> %d\n", n );
+              if( n < 1 ) { fprintf( stderr, "no plugins in the bundle\n" ); return 1; }
+
+              for( int i = 0; i < n; ++i ) {
+                  OfxPluginHead *p = get( i );
+                  if( !p ) { fprintf( stderr, "OfxGetPlugin(%d) is NULL\n", i ); return 1; }
+                  printf( "  [%d] %s  api=%s v%u.%u\n", i, p->pluginIdentifier,
+                          p->pluginApi, p->pluginVersionMajor, p->pluginVersionMinor );
+              }
+              return 0;
+          }
+          EOF
+          gcc -O0 -o probe probe.c -ldl
+          ./probe "$so"
+
+  release:
+    name: Publish release
+    needs: [build, linux-ofx, linux-load, windows-installer]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
