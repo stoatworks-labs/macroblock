@@ -40,6 +40,8 @@ GLSL ES 3.00 is not desktop GL 4.1 core, and nothing on that page measures
 anything. The page says all of that itself. The numbers worth trusting are in
 [Status](#status) and come from the harness in this repository.
 
+**Video:** [What it does, in 51 seconds](https://www.youtube.com/watch?v=Ie6mbVMu21k)
+
 <!-- downloads:start -->
 
 ## Download
