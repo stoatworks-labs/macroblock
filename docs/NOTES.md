@@ -120,17 +120,43 @@ guide's status blockquote say so in as many words rather than burying it.
 and five had been missing for months, so this is a step to remember rather than
 a surprise.
 
+## 2026-08-26 — the release, finished
+
+All six homes agree: repo, website, YouTube (`Ie6mbVMu21k`), both embeds,
+downloads, and the Burrow catalogue. Signed and notarised by the launchd agent,
+site deployed and verified by content, Instagram reel at
+`instagram.com/reel/DcfXslVivry`.
+
+**The first tag failed and had to be force-moved.** The workflow was renamed
+from tilter's with `s/\bTILTER_/MACROBLOCK_/`, and `\b` matches nothing between
+the `D` and the `T` of `-DTILTER_BUILD_FFGL`, so four lines kept the old
+project's option names. CMake does not error on an unknown `-D` — it defines an
+unused cache variable — so macOS and Windows went green while ignoring
+`-DTILTER_BUILD_TOOLS=OFF`, and the Linux OpenFX job died configuring an FFGL
+plugin against a submodule it deliberately does not check out. Both greps run
+afterwards were case-sensitive against `tilter`/`Tilter` and never saw `TILTER_`.
+`tools/verify.sh` now checks every `-D` in the workflow against the options this
+CMakeLists declares.
+
+**Every commit outside this repo went through a clean worktree.**
+`stoatworks-backend` was ~250 commits behind its remote with fourteen files of
+another session's work in the tree, and `stoatworks-website` acquired another
+session's unpushed commit halfway through. Rebasing either would have meant
+stashing somebody else's work. For the shared JSON tables — `catalog-data.json`,
+`social-*.json` — only the `macroblock` key was carried across, so compander's
+and ferric's in-flight entries stayed theirs.
+
 ## Still to do
 
-- **Run it in Resolume on real content, with real audio.** That is the first
-  thing, and the release does not change that.
+- **Run it in Resolume on real content, with real audio.** Still the first
+  thing. The release does not change that, and both the README and the guide say
+  so plainly.
 - Run the OpenFX build in Resolve.
-- Video, thumbnail and the Instagram cut — none exist, so `youtube`/`videoDate`
-  are absent from the projects.json entry and neither embed home has a link to
-  keep in sync yet.
-- Deploy the website. Blocked on the shared checkout: `npm run build` builds the
-  *working tree*, and stoatworks-website had four files of another session's
-  uncommitted work in it. My commit is pushed; the deploy needs doing when that
-  tree is clean.
+- **Settle what Resolume's 64 spectrum bins mean in hertz.** `Audio.cpp` splits
+  the bands by bin index and `tools/spectrum.py` had to assume a mapping. It is
+  now the largest open question, and one Arena answers in a minute.
+- `flenser`'s README download block is stale — the unscoped `gen-downloads.py`
+  pass corrected its projects.json version from v0.1.1 to v0.1.2 and READMEs are
+  skipped by that pass. Left alone because its tree had another session's work.
 - `resolume-demo/sync.sh` still needs its paths fixed, and `macroblock` adding
   to its `repos` list afterwards.
