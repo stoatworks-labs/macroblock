@@ -25,7 +25,7 @@ static CFFGLPluginInfo PluginInfo(
 	0,                                          // Plugin major version number
 	1,                                          // Plugin minor version number
 	FF_EFFECT,                                  // Plugin type
-	"Chroma and luma subsampling, audio driven",// Plugin description
+	"Chroma and luma subsampling, with the grid following the music.\n\nEvery clip on your machine was encoded with the colour thrown away - sampled once per 2x2 block, the brightness kept per pixel. At that scale it is genuinely hard to see.\n\nThis makes the grid arbitrary: from the two-pixel pair a codec uses, through blocks you can read from the back of a room, to one chroma value for the whole canvas - where the picture keeps all its detail and becomes a monochrome of its own average colour.\n\nThen the same to luma on a second, independent grid - a mosaic in brightness with every colour edge exactly where it was.\n\nStart from a Preset, at the bottom.",// Plugin description
 	"Macroblock FFGL effect"                    // About
 );
 
