@@ -572,15 +572,90 @@ FFResult MacroblockPlugin::SetTime( double time )
 	return CFFGLPlugin::SetTime( time );
 }
 
+void MacroblockPlugin::seedHostSaid()
+{
+	// Seeded on first parameter traffic rather than in the constructor, so the
+	// whole mechanism stays in one place. It has to happen BEFORE applyPreset
+	// can run: seeding afterwards would record the preset's own values as the
+	// host's opening position, and the host's very next restatement would then
+	// look like an edit -- which is the bug this exists to fix, reintroduced.
+	if( hostSaidSeeded )
+		return;
+
+	for( unsigned int i = 0; i < PT_COUNT; ++i )
+		hostSaid[ i ] = params[ i ];
+
+	hostSaidSeeded = true;
+}
+
+float MacroblockPlugin::presetValue( int presetIndex, unsigned int id ) const
+{
+	if( presetIndex < 1 || presetIndex > presets::kCount )
+		return -1.0f;
+
+	const presets::Preset& preset = presets::kPresets[ presetIndex - 1 ];
+
+	for( int i = 0; i < presets::kParamCount; ++i )
+		if( kPresetParamIDs[ i ] == id )
+			return preset.v[ i ];
+
+	return -1.0f;
+}
+
+bool MacroblockPlugin::hostIsRestatingItself( unsigned int index, float value )
+{
+	const float lastFromHost = hostSaid[ index ];
+	hostSaid[ index ]        = value;
+
+	const float fromPreset =
+		presetValue( static_cast< int >( std::lround( params[ PT_PRESET ] ) ), index );
+	if( fromPreset < 0.0f )
+		return false;
+
+	// A quantisation allowance rather than a float epsilon. A host that keeps
+	// its parameters shorter than a float -- or round-trips them through a UI,
+	// a MIDI value or a saved composition -- hands back a number NEAR ours
+	// rather than ours, and 1e-4 read that as an edit.
+	constexpr float kSame = 1e-3f;
+
+	if( std::fabs( value - fromPreset ) <= kSame )
+	{
+		// The host agreeing with the preset. Nothing to write -- and writing it
+		// would actively hurt: a host that quantises hands back a ROUNDED copy
+		// of our own value, params[] would take the rounding, and the "did a
+		// covered parameter move?" test below works to a tighter tolerance than
+		// this one and would read that rounding as an edit.
+		return true;
+	}
+
+	if( std::fabs( value - lastFromHost ) > kSame )
+		return false;//neither: the operator has taken over
+
+	// Deliberately not logged. A host that pushes its parameters every frame
+	// would put a line here every frame, and a log that scrolls is a log nobody
+	// reads. The event worth recording is the fallback to Custom, which
+	// happens once.
+	return true;
+}
+
+const unsigned int* MacroblockPlugin::PresetParamIDsForTest( int& count )
+{
+	count = presets::kParamCount;
+	return kPresetParamIDs;
+}
+
 FFResult MacroblockPlugin::SetFloatParameter( unsigned int index, float value )
 {
 	if( index >= PT_COUNT )
 		return FF_FAIL;
 
 	// An About button is a press, not a value to keep: it opens a browser and
-	// nothing about the effect changes.
+	// nothing about the effect changes. Handled before any of the bookkeeping
+	// below, because pressing one is not the operator editing a control.
 	if( index >= PT_ABOUT_FIRST )
 		return stoatworks::about::handleParam( index - PT_ABOUT_FIRST, value ) ? FF_SUCCESS : FF_FAIL;
+
+	seedHostSaid();
 
 	if( index == PT_PRESET )
 	{
@@ -590,10 +665,18 @@ FFResult MacroblockPlugin::SetFloatParameter( unsigned int index, float value )
 		return FF_SUCCESS;
 	}
 
+	// The host may be restating a value it still believes in rather than the
+	// operator moving anything. Letting that through would overwrite the
+	// preset's value in params[] AND read as an edit, dropping the dropdown
+	// straight back to Custom -- which is what made presets look like they
+	// could not be selected at all.
+	if( hostIsRestatingItself( index, value ) )
+		return FF_SUCCESS;
+
 	// A slider moved while a preset is active means the operator has taken over:
-	// the dropdown falls back to Custom. The equality guard matters -- hosts that
-	// honour the value events echo the preset's own values straight back through
-	// here, and that echo must not un-set the preset.
+	// the dropdown falls back to Custom. The tolerance here is deliberately
+	// tighter than the quantisation allowance above: a restatement never
+	// reaches this point, so anything that does is a real move.
 	const float previous = params[ index ];
 	params[ index ]      = value;
 
@@ -631,6 +714,14 @@ void MacroblockPlugin::applyPreset( int presetIndex )
 		// The copy is what changes the picture; the event only tells the host to
 		// re-read the slider. A host that ignores it renders the preset correctly
 		// and merely shows stale knobs.
+		//
+		// ☠️ `hostSaid[ id ]` is deliberately NOT written here. It records what
+		// the HOST last said, and the host has not said anything yet -- it still
+		// believes the values from before the preset was chosen. Recording the
+		// preset's own values as the host's opening position makes the host's
+		// very next restatement of what it believes look like an operator edit,
+		// and the dropdown snaps straight back to Custom. `mbtest --hosts`
+		// fails in the "ignores" column without this.
 		params[ id ] = preset.v[ j ];
 		RaiseParamEvent( id, FF_EVENT_FLAG_VALUE );
 	}
