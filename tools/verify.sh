@@ -293,7 +293,7 @@ done
 # ---------------------------------------------------------------------------
 head_ "The picture"
 # ---------------------------------------------------------------------------
-for check in --identity --constant --mean --alpha --full --cpu --presets; do
+for check in --identity --constant --mean --alpha --full --cpu --presets --hosts; do
     if ./build/mbtest "$check" > "/tmp/macroblock${check}.log" 2>&1; then
         ok "mbtest $check"
     else

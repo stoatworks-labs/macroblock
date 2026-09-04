@@ -29,6 +29,7 @@
 	    --cpu             the GPU and the OpenFX CPU renderer agree
 	    --audio           the analyser's three rules, on a synthetic spectrum
 	    --presets         every factory preset is distinct and non-degenerate
+	    --hosts           presets survive every host behaviour
 	    --sheet PATH      a contact sheet of every preset
 
 	## The synthetic scene
@@ -1574,6 +1575,99 @@ int checkAudio()
 //---------------------------------------------------------------------------
 // --presets
 //---------------------------------------------------------------------------
+/// Presets survive every host behaviour.
+///
+/// The host owns parameter state, and what it does with the values a preset
+/// writes is not a thing the plugin gets to decide. Three behaviours matter:
+/// a host that consumes the value events and pushes our own numbers back
+/// ("honours"), one that ignores them and carries on pushing what it still
+/// believes ("ignores"), and one that honours them but hands back a rounded
+/// copy ("quantises"). Resolume is the second and third.
+///
+/// This is the check that was missing here. Macroblock carried the fleet's
+/// preset shape but compared an incoming value against `params[]` alone, which
+/// only ever recognises the "honours" case -- so a host restating what it still
+/// believed read as an operator edit and the dropdown snapped back to Custom
+/// the instant a preset was chosen. Escapement #2, in a third plugin.
+int checkHosts()
+{
+	std::printf( "  preset                    honours   ignores   quantises\n" );
+
+	int count               = 0;
+	const unsigned int* ids = MacroblockPlugin::PresetParamIDsForTest( count );
+
+	enum Behaviour
+	{
+		Honours,
+		Ignores,
+		Quantises,
+		BehaviourCount
+	};
+
+	int failures = 0;
+	for( int i = 1; i <= presets::kCount; ++i )
+	{
+		bool result[ BehaviourCount ] = {};
+
+		for( int b = 0; b < BehaviourCount; ++b )
+		{
+			MacroblockPlugin plugin;
+
+			// What the host believes before the preset is chosen.
+			std::vector< float > believed( static_cast< size_t >( count ) );
+			for( int j = 0; j < count; ++j )
+				believed[ j ] = plugin.GetFloatParameter( ids[ j ] );
+
+			plugin.SetFloatParameter( controls::PT_PRESET, static_cast< float >( i ) );
+
+			// Twice, because a host that pushes every frame pushes more than
+			// once and the bug this guards against only needed one.
+			for( int pass = 0; pass < 2; ++pass )
+			{
+				for( int j = 0; j < count; ++j )
+				{
+					float push = 0.0f;
+					switch( b )
+					{
+						case Honours: push = plugin.GetFloatParameter( ids[ j ] ); break;
+						case Ignores: push = believed[ j ]; break;
+						default:
+						{
+							const float value = plugin.GetFloatParameter( ids[ j ] );
+							push              = std::round( value * 1000.0f ) / 1000.0f;
+							break;
+						}
+					}
+					plugin.SetFloatParameter( ids[ j ], push );
+				}
+			}
+
+			bool ok = std::lround( plugin.GetFloatParameter( controls::PT_PRESET ) ) == i;
+			for( int j = 0; j < count && ok; ++j )
+			{
+				const float expected = presets::kPresets[ i - 1 ].v[ j ];
+				if( expected < 0.0f )
+					continue;//not covered by this preset
+
+				//The same quantisation allowance the plugin itself uses.
+				if( std::fabs( plugin.GetFloatParameter( ids[ j ] ) - expected ) > 1.5e-3f )
+					ok = false;
+			}
+			result[ b ] = ok;
+			if( !ok )
+				++failures;
+		}
+
+		std::printf( "  %-24s %8s %9s %11s\n", presets::kPresets[ i - 1 ].name,
+		             result[ Honours ] ? "ok" : "FAIL",
+		             result[ Ignores ] ? "ok" : "FAIL",
+		             result[ Quantises ] ? "ok" : "FAIL" );
+	}
+
+	std::printf( "\n  %s\n", failures == 0 ? "PASS" : "FAIL" );
+	return failures == 0 ? 0 : 1;
+}
+
 int checkPresets()
 {
 	const int width  = 192;
@@ -2056,6 +2150,8 @@ int main( int argc, char** argv )
 		result = checkCpu();
 	else if( command == "--presets" )
 		result = checkPresets();
+	else if( command == "--hosts" )
+		result = checkHosts();
 	else if( command == "--out" )
 		result = renderToFile( path, options );
 	else if( command == "--pipe" )

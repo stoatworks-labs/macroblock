@@ -82,6 +82,9 @@ public:
 	/// Force the clock's unit instead of measuring it. The harness renders as
 	/// fast as the GPU allows, so there is nothing for the measurement to
 	/// measure.
+	/// The parameter ids a preset covers, for the offline host-behaviour check.
+	static const unsigned int* PresetParamIDsForTest( int& count );
+
 	void SetClockScaleForTest( double scale )
 	{
 		clock.SetScaleForTest( scale );
@@ -91,6 +94,19 @@ private:
 	controls::HostValues hostValues() const;
 	bool compileShaders();
 	void applyPreset( int presetIndex );
+
+	/// The value `presetIndex` holds for `id`, or -1 if that preset does not
+	/// cover it. `presetIndex` is 1-based; 0 is Custom and covers nothing.
+	float presetValue( int presetIndex, unsigned int id ) const;
+
+	/// Is this the HOST restating a value rather than the operator moving a
+	/// slider? Records `value` as the host's latest word either way.
+	bool hostIsRestatingItself( unsigned int index, float value );
+
+	/// Record the current params[] as the host's opening position. Must run
+	/// before applyPreset can, or the preset's own values become the host's
+	/// supposed last word -- see the note on hostSaid below.
+	void seedHostSaid();
 
 	/// Allocate every buffer this frame needs, at these lattices. Called once
 	/// per frame before anything binds a texture, and a no-op unless something
@@ -112,6 +128,16 @@ private:
 	void releaseBuffers();
 
 	float params[ controls::PT_COUNT ] = {};
+
+	/// What the HOST last said, which is not the same thing as what the plugin
+	/// is rendering with -- and not the same thing as hostValues(), which packs
+	/// params[] into the shared control struct. The host owns parameter state
+	/// and carries on pushing the values it still believes in, or hands back a
+	/// rounded copy of ours, and neither is an operator edit. Comparing an
+	/// incoming value against params[] alone cannot tell those apart, so a
+	/// preset dropped straight back to Custom on the host's own echo.
+	float hostSaid[ controls::PT_COUNT ] = {};
+	bool hostSaidSeeded                  = false;
 
 	ffglex::FFGLShader reduceXShader;
 	ffglex::FFGLShader reduceYShader;
