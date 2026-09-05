@@ -46,15 +46,15 @@ anything. The page says all of that itself. The numbers worth trusting are in
 
 ## Download
 
-**[v0.1.1](https://github.com/stoatworks-labs/macroblock/releases/tag/v0.1.1)** — prebuilt for macOS, Windows and Linux. Pick your platform:
+**[v0.1.2](https://github.com/stoatworks-labs/macroblock/releases/tag/v0.1.2)** — prebuilt for macOS, Windows and Linux. Pick your platform:
 
 <details>
 <summary><b>macOS</b> — Universal (Apple Silicon + Intel)</summary>
 
 | Build | Download | Size |
 | --- | --- | --- |
-| Universal (Apple Silicon + Intel) · .dmg disk image | [`macroblock-0.1.1-macos-universal.dmg`](https://github.com/stoatworks-labs/macroblock/releases/download/v0.1.1/macroblock-0.1.1-macos-universal.dmg) | 219 KB |
-| Universal (Apple Silicon + Intel) · .zip archive | [`macroblock-macos-universal.zip`](https://github.com/stoatworks-labs/macroblock/releases/latest/download/macroblock-macos-universal.zip) | 182 KB |
+| Universal (Apple Silicon + Intel) · .dmg disk image | [`macroblock-0.1.2-macos-universal.dmg`](https://github.com/stoatworks-labs/macroblock/releases/download/v0.1.2/macroblock-0.1.2-macos-universal.dmg) | 221 KB |
+| Universal (Apple Silicon + Intel) · .zip archive | [`macroblock-macos-universal.zip`](https://github.com/stoatworks-labs/macroblock/releases/latest/download/macroblock-macos-universal.zip) | 183 KB |
 | Universal (Apple Silicon + Intel) · .zip archive (OpenFX — Resolve, Vegas, Nuke) | [`macroblock-ofx-macos-universal.zip`](https://github.com/stoatworks-labs/macroblock/releases/latest/download/macroblock-ofx-macos-universal.zip) | 246 KB |
 
 </details>
@@ -64,7 +64,7 @@ anything. The page says all of that itself. The numbers worth trusting are in
 
 | Build | Download | Size |
 | --- | --- | --- |
-| x64 · .exe installer | [`macroblock-0.1.1-windows-x86_64-setup.exe`](https://github.com/stoatworks-labs/macroblock/releases/download/v0.1.1/macroblock-0.1.1-windows-x86_64-setup.exe) | 219 KB |
+| x64 · .exe installer | [`macroblock-0.1.2-windows-x86_64-setup.exe`](https://github.com/stoatworks-labs/macroblock/releases/download/v0.1.2/macroblock-0.1.2-windows-x86_64-setup.exe) | 219 KB |
 | x64 · .zip archive | [`macroblock-windows-x86_64.zip`](https://github.com/stoatworks-labs/macroblock/releases/latest/download/macroblock-windows-x86_64.zip) | 112 KB |
 | x64 · .zip archive (OpenFX — Resolve, Vegas, Nuke) | [`macroblock-ofx-windows-x86_64.zip`](https://github.com/stoatworks-labs/macroblock/releases/latest/download/macroblock-ofx-windows-x86_64.zip) | 67 KB |
 
