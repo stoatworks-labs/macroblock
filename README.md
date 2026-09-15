@@ -22,6 +22,10 @@ was.
 
 In Resolume the grid follows the music.
 
+![Macroblock's test frame through the shipped shaders: colour fields, a fine grid and a ramp](docs/hero.png)
+
+<sub>Rendered by the plugin's own offline harness in a headless GL context — not a Resolume screen capture. Real frames through the real shipped shaders.</sub>
+
 ## Try it in your browser
 
 **<https://macroblock-demo.stoatworks-labs.com>**
